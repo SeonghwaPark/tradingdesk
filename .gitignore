@@ -2,5 +2,10 @@
 Thumbs.db
 .DS_Store
 
+# 파이썬 가상환경 / 캐시
+.venv/
+__pycache__/
+*.pyc
+
 # 개별 리서치 산출물은 커밋하지 않음(개인 판단 기록). 장부/로그만 추적.
 workspace/*/
