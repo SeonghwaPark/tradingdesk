@@ -1,0 +1,6 @@
+# TradingDesk 시세도구(tools/ta_snapshot.py) 의존성
+# 다른 PC 셋업: python -m venv .venv && .venv/Scripts/python.exe -m pip install -r requirements.txt
+yfinance
+pandas
+ta
+mplfinance
