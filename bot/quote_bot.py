@@ -31,6 +31,22 @@ STATE = os.path.join(HERE, "quote_state.json")
 REC_KO = {"strong_buy": "적극매수", "buy": "매수", "hold": "보유/중립",
           "underperform": "하회", "sell": "매도"}
 
+# 미국주 한글/약칭 → 티커 (자주 찾는 것 위주, 필요시 계속 추가)
+US_ALIASES = {
+    "엔비디아": "NVDA", "엔비댜": "NVDA", "애플": "AAPL", "테슬라": "TSLA",
+    "마이크로소프트": "MSFT", "마소": "MSFT", "구글": "GOOGL", "알파벳": "GOOGL",
+    "아마존": "AMZN", "메타": "META", "페이스북": "META", "넷플릭스": "NFLX",
+    "마이크론": "MU", "브로드컴": "AVGO", "인텔": "INTC", "퀄컴": "QCOM",
+    "티에스엠씨": "TSM", "tsmc": "TSM", "대만반도체": "TSM", "팔란티어": "PLTR",
+    "코인베이스": "COIN", "마이크로스트래티지": "MSTR", "버크셔": "BRK-B",
+    "디즈니": "DIS", "스타벅스": "SBUX", "나이키": "NKE", "코스트코": "COST",
+    "월마트": "WMT", "제이피모건": "JPM", "비자": "V", "마스터카드": "MA",
+    "오라클": "ORCL", "세일즈포스": "CRM", "어도비": "ADBE", "우버": "UBER",
+    "슈퍼마이크로": "SMCI", "일라이릴리": "LLY", "아이온큐": "IONQ",
+    "리게티": "RGTI", "아리스타": "ANET", "마벨": "MRVL", "델": "DELL",
+    "amd": "AMD", "구글a": "GOOGL", "구글c": "GOOG",
+}
+
 
 # ---------- 상태(offset) ----------
 def load_offset() -> int:
@@ -107,6 +123,9 @@ def _mktcap(v, kr):
 def classify(q: str):
     """입력을 (종류, 조회키)로. kr→6자리코드, us→티커."""
     q = q.strip()
+    alias = US_ALIASES.get(q.lower().replace(" ", ""))   # 엔비디아·마소 등
+    if alias:
+        return "us", alias
     digits = "".join(c for c in q if c.isdigit())
     up = q.upper()
     if up.endswith((".KS", ".KQ")):
