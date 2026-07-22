@@ -8,16 +8,17 @@ tools: Read, Write, Glob, WebSearch
 
 ## 입력
 매니저가 다음을 준다:
-- 근거 파일 경로(`research.md`, `technical.md`, `fundamentals.md`)
+- 근거 파일 경로(`research.md`, `technical.md`, `fundamentals.md`, 한국종목이면 `dart.md`도)
 - 저장 경로(`analysis.md`)
 
 ## 할 일
-1. `research.md`·`technical.md`·`fundamentals.md`를 Read로 읽는다.
-2. **🛡️ 수치 교차검증 (먼저 수행)**: `research.md`에 나온 정량수치(시총·PER·PBR·매출·EPS 등)를 `fundamentals.md`의 **실측값과 대조**해 아래 검증표를 만든다.
+1. `research.md`·`technical.md`·`fundamentals.md`(+있으면 `dart.md`)를 Read로 읽는다.
+2. **🛡️ 수치 교차검증 (먼저 수행)**: `research.md`에 나온 정량수치(시총·PER·PBR·매출·EPS·**실적**)를 **실측값과 대조**해 아래 검증표를 만든다.
+   - 밸류/시세 숫자는 `fundamentals.md`(yfinance), **실적(매출·영업이익·순이익)은 `dart.md`(DART 확정공시)**가 기준.
    - ✅ **일치**: 실측과 비슷(대략 오차 10% 이내).
    - ⚠️ **불일치**: 실측과 크게 다름(배 이상 등) → **환각 의심**. 판단에는 **실측값을 쓰고**, 리서처 수치는 버린다.
-   - ❓ **검증불가**: 실측이 N/A(예: 한국 후행PER·PBR) → 확정 근거로 쓰지 말고 "미확인"으로 다룬다.
-   - **원칙: 숫자가 충돌하면 언제나 fundamentals.md(실측)를 신뢰한다.**
+   - ❓ **검증불가**: 실측이 N/A(예: 한국 후행PER·PBR, 또는 DART 키 미설정) → 확정 근거로 쓰지 말고 "미확인"으로 다룬다.
+   - **신뢰 우선순위: 실적은 DART > yfinance > 웹, 시세/밸류는 yfinance > 웹. 숫자가 충돌하면 언제나 실측을 신뢰한다.**
 3. 그 위에서 강점/약점/촉매/리스크/방향성 의견(긍정·중립·부정 + 확신도)을 평가한다. 밸류 판단은 검증된 숫자로만 한다.
 4. 판단 근거는 `research.md`·`technical.md`를 인용한다. 새 사실이 꼭 필요하면 WebSearch로 최소한만 보완하고 출처를 밝힌다.
 5. 아래 형식으로 지정 경로에 Write 한다.

@@ -73,6 +73,47 @@ def fmt_price(v, currency: str):
     return f"{float(v):,.2f} {unit}".strip()
 
 
+_REC_KO = {
+    "strong_buy": "적극매수", "buy": "매수", "hold": "보유/중립",
+    "underperform": "시장수익률 하회", "sell": "매도",
+}
+
+
+def build_consensus(info: dict, cur: str) -> str:
+    """애널리스트 목표주가·투자의견 블록. yfinance info 재사용(추가 호출 없음).
+
+    한국 종목은 yfinance 애널 커버리지가 얇어 대부분 None일 수 있다 → 정직하게
+    '커버리지 없음'으로 표기하고 지어내지 않는다.
+    """
+    mean = info.get("targetMeanPrice")
+    high = info.get("targetHighPrice")
+    low = info.get("targetLowPrice")
+    n = info.get("numberOfAnalystOpinions")
+    reckey = info.get("recommendationKey")
+    price = info.get("currentPrice")
+
+    has_any = any(v is not None for v in (mean, high, low, n, reckey))
+    lines = ["", "## 애널리스트 컨센서스 (yfinance)"]
+    if not has_any or reckey in (None, "none"):
+        lines.append("- 커버리지 없음 (yfinance 미제공) — 목표주가·투자의견 미확인. "
+                     "국내 종목은 네이버증권/에프앤가이드 등 별도 확인 필요.")
+        return "\n".join(lines)
+
+    rec_ko = _REC_KO.get(reckey, reckey or NA)
+    upside = ""
+    if mean is not None and price:
+        up = (float(mean) - float(price)) / float(price) * 100
+        upside = f" · 현재가 대비 **{up:+.1f}%**"
+    lines += [
+        f"- 투자의견: **{rec_ko}**" + (f" (분석가 {int(n)}명)" if n else ""),
+        f"- 목표주가 평균: {fmt_price(mean, cur)}{upside}",
+        f"- 목표주가 범위: {fmt_price(low, cur)} ~ {fmt_price(high, cur)}",
+        "> ⚠️ yfinance 애널 컨센서스는 시점·표본이 제한적일 수 있음(특히 한국). "
+        "방향 참고용, 절대 신뢰 금지.",
+    ]
+    return "\n".join(lines)
+
+
 def build(ticker: str) -> str:
     t = yf.Ticker(ticker)
     try:
@@ -117,6 +158,8 @@ def build(ticker: str) -> str:
               "yfinance가 자주 비운다(공식 공시로 보완)."]
     if na_items:
         lines.append(f"> 이번 미제공 항목: {', '.join(na_items)}")
+
+    lines.append(build_consensus(info, cur))
     return "\n".join(lines)
 
 
