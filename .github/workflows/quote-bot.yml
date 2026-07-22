@@ -5,7 +5,7 @@ name: quote-bot
 # 크론이 주기적으로 getUpdates 로 밀린 명령을 처리한다(응답까지 최대 크론주기 지연).
 on:
   schedule:
-    - cron: "*/10 * * * *"   # 10분마다 (private repo면 Actions 무료 2000분 주의 — README 참고)
+    - cron: "*/5 * * * *"    # 5분마다 (GitHub 크론 최소 간격; public이라 Actions 무료 무제한)
   workflow_dispatch: {}
 
 permissions:
