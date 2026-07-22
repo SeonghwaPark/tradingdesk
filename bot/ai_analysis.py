@@ -14,19 +14,23 @@ import os
 MODEL = "gpt-4o-mini"
 
 SYSTEM = (
-    "당신은 신중한 주식 애널리스트입니다. 사용자가 준 실측 데이터(DART 확정실적·"
-    "애널리스트 컨센서스·시세/기술지표·최근공시)에만 근거해 한국어로 간결하게 분석합니다.\n"
+    "당신은 여러 전문가 관점(렌즈)에서 깊이 있게 분석하는 신중한 주식 애널리스트입니다.\n"
+    "사용자가 준 실측 데이터(DART 확정실적·애널리스트 컨센서스·시세/기술지표(MA5/20/50/60·"
+    "RSI·MACD)·최근공시·최근뉴스)에만 근거해 한국어로 분석합니다.\n"
     "[원칙]\n"
     "- 매수/매도/보유 권유 금지. 중립적 분석·시나리오만 (AI 추론이며 투자 권유가 아님).\n"
     "- 제공된 데이터에 없는 사실·수치를 지어내지 마세요. 불확실하면 불확실하다고 쓰세요.\n"
     "- DART 확정실적은 공식 수치이니 신뢰하고, 컨센서스는 '시장 기대'로만 다루세요.\n"
-    "- 각 항목 1~2문장, 구체적으로.\n"
+    "- 뉴스를 인용할 땐 매체를 함께 밝히세요(예: '로이터에 따르면'). 보도 사실과 본인 해석을 구분.\n"
+    "- 각 렌즈는 구체적으로 2~3문장. 최대한 상세하고 근거 있게.\n"
     "[출력] 다음 JSON만:\n"
     '{"summary_line": "이 종목 현 상황 핵심 한 줄", '
-    '"lenses": {"fundamental": "실적·밸류에이션 관점", '
-    '"technical": "이평선·RSI·MACD 등 기술 관점", '
-    '"risk": "하방/유의 시나리오"}, '
-    '"thesis": {"catalysts": ["촉매 최대3"], "risks": ["유의점 최대3"]}}'
+    '"lenses": {"fundamental": "실적·밸류에이션(DART·PER·YoY) 관점 2~3문장", '
+    '"technical": "MA5/20/50/60·RSI·MACD·추세 관점 2~3문장", '
+    '"macro": "섹터·업황·매크로·뉴스 흐름 관점 2~3문장", '
+    '"risk": "하방/유의 시나리오 2~3문장"}, '
+    '"thesis": {"catalysts": ["촉매 최대3"], "risks": ["유의점 최대3"], '
+    '"checkpoints": ["앞으로 볼 관전포인트 최대3"]}}'
 )
 
 
@@ -52,22 +56,29 @@ def _yoy(cur, prev):
     return None
 
 
-def build_payload(name, ticker, kr, info, m, dartd, day_chg, disc) -> dict:
+def build_payload(name, ticker, kr, info, m, dartd, day_chg, disc, news=None) -> dict:
     price = info.get("currentPrice") or m["last"]
     p = {
         "종목": name, "티커": ticker, "시장": "한국" if kr else "미국",
         "현재가": price, "당일등락%": round(day_chg, 2) if day_chg is not None else None,
         "시가총액": info.get("marketCap"),
         "선행PER": info.get("forwardPE"), "PBR": info.get("priceToBook"),
+        "배당수익률%": info.get("dividendYield"),
         "기술지표": {
+            "현재가_대비_5일선%": round(m.get("vs_sma5_pct", 0), 1),
             "현재가_대비_20일선%": round(m["vs_sma20_pct"], 1),
+            "현재가_대비_50일선%": round(m.get("vs_sma50_pct", 0), 1),
             "현재가_대비_60일선%": round(m["vs_sma60_pct"], 1),
             "RSI14": round(m["rsi"], 1),
             "MACD": "골든" if m["macd"] >= m["macd_signal"] else "데드",
             "52주고점대비%": round(m["from_hi_pct"], 1),
+            "52주저점대비%": round(m["from_lo_pct"], 1),
             "최근20일등락%": round(m["chg20_pct"], 1),
         },
     }
+    if news:
+        p["최근뉴스"] = [{"제목": n["title"], "매체": n.get("publisher")}
+                     for n in news[:5]]
     if dartd:
         prev = dartd.get("prev") or {}
         p["DART확정실적"] = {
@@ -99,23 +110,28 @@ def _format(j: dict) -> str:
         lines.append(f"· <b>펀더멘털</b>: {lens['fundamental']}")
     if lens.get("technical"):
         lines.append(f"· <b>기술적</b>: {lens['technical']}")
+    if lens.get("macro"):
+        lines.append(f"· <b>매크로/섹터</b>: {lens['macro']}")
     if lens.get("risk"):
         lines.append(f"· <b>리스크</b>: {lens['risk']}")
     cats = th.get("catalysts") or []
     risks = th.get("risks") or []
+    checks = th.get("checkpoints") or []
     if cats:
         lines += ["", "🚀 촉매: " + " / ".join(cats)]
     if risks:
         lines.append("⚠️ 유의: " + " / ".join(risks))
+    if checks:
+        lines.append("👀 관전포인트: " + " / ".join(checks))
     lines += ["", "⚠️ AI 추론(참고용) · 투자권유 아님"]
     return "\n".join(lines)
 
 
-def analyze(name, ticker, kr, info, m, dartd, day_chg, disc, ask=None) -> str | None:
+def analyze(name, ticker, kr, info, m, dartd, day_chg, disc, news=None, ask=None) -> str | None:
     """AI 심층분석 텍스트 반환. 키 없거나 실패 시 None."""
     if not os.environ.get("OPENAI_API_KEY"):
         return None
-    payload = build_payload(name, ticker, kr, info, m, dartd, day_chg, disc)
+    payload = build_payload(name, ticker, kr, info, m, dartd, day_chg, disc, news)
     messages = [
         {"role": "system", "content": SYSTEM},
         {"role": "user", "content": "이 종목을 분석하세요.\n"

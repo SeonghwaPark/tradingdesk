@@ -125,7 +125,7 @@ def _yoy(cur, prev):
     return ""
 
 
-def build_card(kind, ticker, info, m, dartd, day_chg=None, disc=None) -> str:
+def build_card(kind, ticker, info, m, dartd, day_chg=None, disc=None, news=None) -> str:
     kr = (kind == "kr")
     name = info.get("longName") or info.get("shortName") or ticker
     price = info.get("currentPrice") or m["last"]
@@ -188,8 +188,33 @@ def build_card(kind, ticker, info, m, dartd, day_chg=None, disc=None) -> str:
         if titles:
             lines += ["", "📄 최근공시: " + " / ".join(titles)]
 
+    if news:
+        lines.append("")
+        lines.append("📰 뉴스")
+        for it in news[:2]:
+            t = it["title"]
+            t = t[:52] + "…" if len(t) > 52 else t
+            lines.append(f"· {t}")
+
     lines += ["", "⚠️ 데이터 스냅샷(참고용) · 투자조언 아님"]
     return "\n".join(lines)
+
+
+def get_news(ticker: str, n: int = 5):
+    """yfinance 최근 뉴스 헤드라인. 실패/없음이면 []."""
+    try:
+        raw = yf.Ticker(ticker).news or []
+    except Exception:
+        return []
+    out = []
+    for it in raw[:n]:
+        c = it.get("content") or it
+        title = c.get("title") or it.get("title")
+        prov = c.get("provider")
+        pub = prov.get("displayName") if isinstance(prov, dict) else it.get("publisher")
+        if title:
+            out.append({"title": title, "publisher": pub})
+    return out
 
 
 def analyze(query: str):
@@ -238,10 +263,12 @@ def analyze(query: str):
         print("[chart]", e)
         chart_path = None
 
-    card = build_card(kind, used, info, m, dartd, day_chg, disc)
+    news = get_news(used)
+
+    card = build_card(kind, used, info, m, dartd, day_chg, disc, news)
     name = info.get("longName") or info.get("shortName") or used
     ai_text = ai_analysis.analyze(name, used, kind == "kr", info, m,
-                                  dartd, day_chg, disc)
+                                  dartd, day_chg, disc, news)
     return card, chart_path, ai_text
 
 

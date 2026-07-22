@@ -54,13 +54,17 @@ def fetch(ticker: str, period: str) -> pd.DataFrame:
 
 def compute(df: pd.DataFrame) -> dict:
     close = df["Close"].astype(float)
+    sma5 = close.rolling(5).mean()
     sma20 = close.rolling(20).mean()
+    sma50 = close.rolling(50).mean()
     sma60 = close.rolling(60).mean()
     rsi = RSIIndicator(close=close, window=14).rsi()
     macd = MACD(close=close)
 
     last = float(close.iloc[-1])
+    s5 = float(sma5.iloc[-1])
     s20 = float(sma20.iloc[-1])
+    s50 = float(sma50.iloc[-1])
     s60 = float(sma60.iloc[-1])
     hi52 = float(close.tail(252).max())
     lo52 = float(close.tail(252).min())
@@ -68,9 +72,13 @@ def compute(df: pd.DataFrame) -> dict:
 
     return {
         "last": last,
+        "sma5": s5,
         "sma20": s20,
+        "sma50": s50,
         "sma60": s60,
+        "vs_sma5_pct": (last / s5 - 1) * 100,
         "vs_sma20_pct": (last / s20 - 1) * 100,
+        "vs_sma50_pct": (last / s50 - 1) * 100,
         "vs_sma60_pct": (last / s60 - 1) * 100,
         "rsi": float(rsi.iloc[-1]),
         "macd": float(macd.macd().iloc[-1]),
