@@ -22,6 +22,8 @@ SYSTEM = (
     "- 제공된 데이터에 없는 사실·수치를 지어내지 마세요. 불확실하면 불확실하다고 쓰세요.\n"
     "- DART 확정실적은 공식 수치이니 신뢰하고, 컨센서스는 '시장 기대'로만 다루세요.\n"
     "- 뉴스를 인용할 땐 매체를 함께 밝히세요(예: '로이터에 따르면'). 보도 사실과 본인 해석을 구분.\n"
+    "- **최근뉴스에 애널리스트·증권사·투자기관(하우스)의 의견·목표주가·등급이 있으면 반드시 뽑아** "
+    "expert_views에 기관/매체와 함께 정리하세요. 없으면 빈 배열.\n"
     "- 각 렌즈는 구체적으로 2~3문장. 최대한 상세하고 근거 있게.\n"
     "[출력] 다음 JSON만:\n"
     '{"summary_line": "이 종목 현 상황 핵심 한 줄", '
@@ -29,6 +31,7 @@ SYSTEM = (
     '"technical": "MA5/20/50/60·RSI·MACD·추세 관점 2~3문장", '
     '"macro": "섹터·업황·매크로·뉴스 흐름 관점 2~3문장", '
     '"risk": "하방/유의 시나리오 2~3문장"}, '
+    '"expert_views": ["뉴스 속 애널/증권사/하우스 의견·목표가(기관·매체 명시), 없으면 []"], '
     '"thesis": {"catalysts": ["촉매 최대3"], "risks": ["유의점 최대3"], '
     '"checkpoints": ["앞으로 볼 관전포인트 최대3"]}}'
 )
@@ -114,6 +117,11 @@ def _format(j: dict) -> str:
         lines.append(f"· <b>매크로/섹터</b>: {lens['macro']}")
     if lens.get("risk"):
         lines.append(f"· <b>리스크</b>: {lens['risk']}")
+    evs = j.get("expert_views") or []
+    if evs:
+        lines += ["", "🏦 <b>전문가·하우스 뷰</b>"]
+        for ev in evs[:3]:
+            lines.append(f"· {ev}")
     cats = th.get("catalysts") or []
     risks = th.get("risks") or []
     checks = th.get("checkpoints") or []
