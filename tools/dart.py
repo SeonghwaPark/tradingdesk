@@ -86,6 +86,25 @@ def corp_code_for(stock_code: str):
     return None, None
 
 
+def code_for_name(name: str):
+    """한글 종목명 → 6자리 종목코드 (상장사만). 정확일치 우선, 없으면 포함일치."""
+    if not KEY or not ensure_corpcode():
+        return None
+    name = name.strip()
+    tree = ET.parse(CORPCODE_XML)
+    contains = None
+    for el in tree.getroot().iter("list"):
+        sc = (el.findtext("stock_code") or "").strip()
+        if not sc:  # 비상장(종목코드 없음)은 제외
+            continue
+        cn = (el.findtext("corp_name") or "").strip()
+        if cn == name:
+            return sc
+        if contains is None and name and name in cn:
+            contains = sc
+    return contains
+
+
 def _amt(s: str):
     s = (s or "").strip().replace(",", "")
     if s in ("", "-"):
