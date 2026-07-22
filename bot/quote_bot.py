@@ -12,6 +12,7 @@ fisher_stock_bot 에게 `/quote 005930`, `삼성전자`, `NVDA` 처럼 보내면
 import json
 import os
 import sys
+import tempfile
 
 import requests
 import yfinance as yf
@@ -65,6 +66,22 @@ def send(chat_id, text: str):
         print("[send]", e)
 
 
+def send_photo(chat_id, path: str, caption: str):
+    """차트 이미지 + 카드(캡션) 한 번에 전송. 실패 시 텍스트로 폴백."""
+    try:
+        with open(path, "rb") as f:
+            r = requests.post(f"{API}/sendPhoto",
+                              data={"chat_id": chat_id, "caption": caption,
+                                    "parse_mode": "HTML"},
+                              files={"photo": f}, timeout=30)
+        if not r.ok:
+            print("[send_photo]", r.text)
+            send(chat_id, caption)
+    except Exception as e:
+        print("[send_photo]", e)
+        send(chat_id, caption)
+
+
 # ---------- 포맷 ----------
 def _won(v):
     if v is None:
@@ -101,13 +118,23 @@ def classify(q: str):
     return ("kr", code) if code else (None, None)
 
 
-def build_card(kind, ticker, info, m, dartd) -> str:
+def _yoy(cur, prev):
+    if cur and prev and prev != 0:
+        return f" <i>(전년比 {(cur/prev-1)*100:+.0f}%)</i>"
+    return ""
+
+
+def build_card(kind, ticker, info, m, dartd, day_chg=None, disc=None) -> str:
     kr = (kind == "kr")
     name = info.get("longName") or info.get("shortName") or ticker
     price = info.get("currentPrice") or m["last"]
 
+    day = ""
+    if day_chg is not None:
+        arrow = "🔺" if day_chg > 0 else "🔻" if day_chg < 0 else "➖"
+        day = f"  {arrow}{day_chg:+.1f}%(당일)"
     lines = [f"📊 <b>{name}</b> ({ticker})", "━━━━━━━━━━━━",
-             f"현재가 <b>{_price(price, kr)}</b>"]
+             f"현재가 <b>{_price(price, kr)}</b>{day}"]
 
     vparts = []
     mc = _mktcap(info.get("marketCap"), kr)
@@ -115,13 +142,20 @@ def build_card(kind, ticker, info, m, dartd) -> str:
         vparts.append(f"시총 {mc}")
     if info.get("forwardPE"):
         vparts.append(f"선행PER {info['forwardPE']:.2f}")
+    if info.get("priceToBook"):
+        vparts.append(f"PBR {info['priceToBook']:.2f}")
+    if info.get("dividendYield"):
+        vparts.append(f"배당 {info['dividendYield']:.1f}%")
     if vparts:
         lines.append(" · ".join(vparts))
 
     if dartd:
         rn = dart.REPRT.get(dartd["reprt"], dartd["reprt"])
+        prev = dartd.get("prev") or {}
         lines += ["", f"🏛 <b>DART 확정</b> ({dartd['year']} {rn}·{dartd['fs']})",
-                  f"매출 {_won(dartd['매출액'])} · 영업익 {_won(dartd['영업이익'])} · 순익 {_won(dartd['당기순이익'])}"]
+                  f"매출 {_won(dartd['매출액'])}{_yoy(dartd['매출액'], prev.get('매출액'))}",
+                  f"영업익 {_won(dartd['영업이익'])}{_yoy(dartd['영업이익'], prev.get('영업이익'))}"
+                  f" · 순익 {_won(dartd['당기순이익'])}"]
 
     reckey = info.get("recommendationKey")
     mean = info.get("targetMeanPrice")
@@ -143,36 +177,68 @@ def build_card(kind, ticker, info, m, dartd) -> str:
     lines += ["", f"📈 {ma} · RSI {m['rsi']:.0f}({rsi_state}) · MACD {macd_state}",
               f"52주고점 {m['from_hi_pct']:+.0f}% · 최근20일 {m['chg20_pct']:+.0f}%"]
 
+    if disc:
+        titles = []
+        for d in disc[:2]:
+            dt = d.get("rcept_dt", "")
+            dt = f"{dt[4:6]}/{dt[6:]}" if len(dt) == 8 else dt
+            nm = (d.get("report_nm") or "").strip()
+            titles.append(f"{dt} {nm[:22]}")
+        if titles:
+            lines += ["", "📄 최근공시: " + " / ".join(titles)]
+
     lines += ["", "⚠️ 데이터 스냅샷(참고용) · 투자조언 아님"]
     return "\n".join(lines)
 
 
 def analyze(query: str):
+    """(카드텍스트, 차트경로|None) 반환. 못 찾으면 (None, None)."""
     kind, key = classify(query)
     if not kind:
-        return None
-    used, m = None, None
+        return None, None
+    used, m, df = None, None, None
     for c in ta.resolve_ticker(key):
-        df = ta.fetch(c, "1y")
-        if len(df) >= 60:
-            used, m = c, ta.compute(df)
+        d = ta.fetch(c, "1y")
+        if len(d) >= 60:
+            used, m, df = c, ta.compute(d), d
             break
     if not used:
-        return None
+        return None, None
+
+    day_chg = None
+    try:
+        closes = df["Close"].astype(float)
+        day_chg = (closes.iloc[-1] / closes.iloc[-2] - 1) * 100
+    except Exception:
+        pass
+
     try:
         info = yf.Ticker(used).info or {}
     except Exception:
         info = {}
-    dartd = None
+
+    dartd, disc = None, None
     if kind == "kr":
         code6 = "".join(c for c in used if c.isdigit())[:6]
         try:
             cc, _ = dart.corp_code_for(code6)
             if cc:
                 dartd = dart.latest_financials(cc)
+                disc = dart.recent_disclosures(cc, days=60, n=2)
         except Exception as e:
             print("[dart]", e)
-    return build_card(kind, used, info, m, dartd)
+
+    chart_path = None
+    try:
+        chart_path = os.path.join(tempfile.gettempdir(),
+                                  f"q_{used.replace('.', '_')}.png")
+        ta.save_chart(df, used, chart_path)
+    except Exception as e:
+        print("[chart]", e)
+        chart_path = None
+
+    card = build_card(kind, used, info, m, dartd, day_chg, disc)
+    return card, chart_path
 
 
 # ---------- 메인 루프 ----------
@@ -208,12 +274,17 @@ def process():
             continue
         send(chat, f"🔎 <b>{q}</b> 조회 중…")
         try:
-            card = analyze(q)
+            card, chart = analyze(q)
         except Exception as e:
             print("[analyze]", e)
-            card = None
-        send(chat, card or (f"'{q}' 를 못 찾았어요. 종목코드(005930)·티커(NVDA) 또는 "
-                            "정확한 한글명으로 보내보세요. (한글명은 DART 키 필요)"))
+            card, chart = None, None
+        if card and chart and os.path.exists(chart):
+            send_photo(chat, chart, card)
+        elif card:
+            send(chat, card)
+        else:
+            send(chat, f"'{q}' 를 못 찾았어요. 종목코드(005930)·티커(NVDA) 또는 "
+                       "정확한 한글명으로 보내보세요. (한글명은 DART 키 필요)")
     save_offset(new_offset)
 
 

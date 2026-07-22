@@ -146,6 +146,7 @@ def latest_financials(corp_code: str):
         keys = ["매출액", "영업이익", "당기순이익"]
         for pref in ("CFS", "OFS"):  # 연결 우선, 없으면 별도
             want = {k: None for k in keys}
+            prev = {k: None for k in keys}   # 전기(전년동기) 금액 — YoY 계산용
             for r in rows:
                 if r.get("fs_div") != pref:
                     continue
@@ -153,9 +154,11 @@ def latest_financials(corp_code: str):
                 for k in keys:
                     if want[k] is None and k in nm:   # 첫 부분일치 채택(주계정이 먼저 옴)
                         want[k] = _amt(r.get("thstrm_amount"))
+                        prev[k] = _amt(r.get("frmtrm_amount"))
             if any(v is not None for v in want.values()):
                 fs_label = "연결" if pref == "CFS" else "별도"
-                return {"year": year, "reprt": reprt, "fs": fs_label, **want}
+                return {"year": year, "reprt": reprt, "fs": fs_label,
+                        "prev": prev, **want}
     return None
 
 

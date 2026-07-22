@@ -30,6 +30,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}   # fisher_stock_bot 토큰
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           DART_API_KEY: ${{ secrets.DART_API_KEY }}               # 한글명·확정실적용(없어도 동작)
+          MPLBACKEND: Agg                                          # 헤드리스 차트 렌더링
         run: python bot/quote_bot.py
       - name: Persist offset
         if: always()
