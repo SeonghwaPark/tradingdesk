@@ -21,6 +21,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "tools"))
 import ta_snapshot as ta   # noqa: E402
 import dart                # noqa: E402
+import ai_analysis         # noqa: E402
 
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 CHAT_ID = str(os.environ.get("TELEGRAM_CHAT_ID", ""))
@@ -192,10 +193,10 @@ def build_card(kind, ticker, info, m, dartd, day_chg=None, disc=None) -> str:
 
 
 def analyze(query: str):
-    """(카드텍스트, 차트경로|None) 반환. 못 찾으면 (None, None)."""
+    """(카드텍스트, 차트경로|None, AI분석|None) 반환. 못 찾으면 (None, None, None)."""
     kind, key = classify(query)
     if not kind:
-        return None, None
+        return None, None, None
     used, m, df = None, None, None
     for c in ta.resolve_ticker(key):
         d = ta.fetch(c, "1y")
@@ -203,7 +204,7 @@ def analyze(query: str):
             used, m, df = c, ta.compute(d), d
             break
     if not used:
-        return None, None
+        return None, None, None
 
     day_chg = None
     try:
@@ -238,7 +239,10 @@ def analyze(query: str):
         chart_path = None
 
     card = build_card(kind, used, info, m, dartd, day_chg, disc)
-    return card, chart_path
+    name = info.get("longName") or info.get("shortName") or used
+    ai_text = ai_analysis.analyze(name, used, kind == "kr", info, m,
+                                  dartd, day_chg, disc)
+    return card, chart_path, ai_text
 
 
 # ---------- 메인 루프 ----------
@@ -274,10 +278,10 @@ def process():
             continue
         send(chat, f"🔎 <b>{q}</b> 조회 중…")
         try:
-            card, chart = analyze(q)
+            card, chart, ai_text = analyze(q)
         except Exception as e:
             print("[analyze]", e)
-            card, chart = None, None
+            card, chart, ai_text = None, None, None
         if card and chart and os.path.exists(chart):
             send_photo(chat, chart, card)
         elif card:
@@ -285,6 +289,8 @@ def process():
         else:
             send(chat, f"'{q}' 를 못 찾았어요. 종목코드(005930)·티커(NVDA) 또는 "
                        "정확한 한글명으로 보내보세요. (한글명은 DART 키 필요)")
+        if card and ai_text:            # AI 심층분석은 별도 메시지로
+            send(chat, ai_text)
     save_offset(new_offset)
 
 
